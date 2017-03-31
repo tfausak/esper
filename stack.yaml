@@ -1,0 +1,5 @@
+resolver: lts-8.6
+
+extra-deps:
+  - pipes-http-1.0.5
+  - purescript-0.11.1
