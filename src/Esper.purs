@@ -1,4 +1,11 @@
-module Esper where
+module Esper
+  ( BUFFER
+  , CONSOLE
+  , FILE
+  , Effect
+  , Unit
+  , main
+  ) where
 
 -- Effect
 
@@ -89,11 +96,13 @@ foreign import
   data FILE :: Effect
 
 foreign import
-  readFile
-    :: forall e
-    . String
-    -> (Nullable Error -> Nullable Buffer -> Effect (buffer :: BUFFER, file :: FILE | e) Unit)
-    -> Effect (buffer :: BUFFER, file :: FILE | e) Unit
+  readFile ::
+    forall e.
+    String ->
+    ( Nullable Error ->
+      Nullable Buffer ->
+      Effect (buffer :: BUFFER, file :: FILE | e) Unit) ->
+    Effect (buffer :: BUFFER, file :: FILE | e) Unit
 
 -- Inspect
 
@@ -113,10 +122,7 @@ data Either a b = Left a | Right b
 
 -- Tuple
 
-newtype Tuple a b = Tuple
-  { first :: a
-  , second :: b
-  }
+data Tuple a b = Tuple a b
 
 -- State
 
@@ -124,37 +130,37 @@ newtype StateT s m a = StateT (s -> m (Tuple a s))
 
 instance stateTHasBind :: HasBind m => HasBind (StateT s m) where
   bind m f = StateT \s -> do
-    Tuple { first: x, second: s' } <- runStateT m s
+    Tuple x s' <- runStateT m s
     runStateT (f x) s'
 
 instance stateTHasPure :: HasPure m => HasPure (StateT s m) where
-  pure x = StateT \y -> pure (Tuple { first: x, second: y })
+  pure x = StateT \y -> pure (Tuple x y)
 
 runStateT :: forall a m s. StateT s m a -> s -> m (Tuple a s)
 runStateT (StateT f) = f
 
 state :: forall a m s. HasPure m => (s -> Tuple a s) -> StateT s m a
-state f = StateT \x -> pure (f x)
+state f = StateT \s -> pure (f s)
 
 get :: forall m s. HasPure m => StateT s m s
-get = state \x -> Tuple { first: x, second: x }
+get = state \s -> Tuple s s
 
 put :: forall m s. HasPure m => s -> StateT s m Unit
-put x = state \_ -> Tuple { first: unit, second: x }
+put s = state \_ -> Tuple unit s
 
 liftStateT :: forall a m s. HasBind m => HasPure m => m a -> StateT s m a
 liftStateT f = StateT \s -> do
   x <- f
-  pure (Tuple { first: x, second: s })
+  pure (Tuple x s)
 
 -- Reader
 
 newtype ReaderT r m a = ReaderT (r -> m a)
 
 instance readerTHasBind :: HasBind m => HasBind (ReaderT r m) where
-  bind m f = ReaderT \x -> do
-    y <- runReaderT m x
-    runReaderT (f y) x
+  bind m f = ReaderT \r -> do
+    x <- runReaderT m r
+    runReaderT (f x) r
 
 instance readerTHasPure :: HasPure m => HasPure (ReaderT r m) where
   pure x = liftReaderT <| pure x
@@ -181,22 +187,28 @@ instance intHasAdd :: HasAdd Int where
 
 infixl 6 add as +
 
--- Apply
+-- Pipes
 
-apply :: forall a b. (a -> b) -> a -> b
-apply f x = f x
+pipeLeft :: forall a b. (a -> b) -> a -> b
+pipeLeft f x = f x
 
-infixr 1 apply as <|
+infixr 1 pipeLeft as <|
+
+-- Parser
+
+type Parser a = forall e.
+  ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) a
 
 -- Helper
 
-getUInt32LE :: forall e. ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) Int
+getUInt32LE :: Parser Int
 getUInt32LE = do
   buffer <- ask
-  position <- liftReaderT get
-  value <- liftReaderT <| liftStateT <| readUInt32LE buffer position
-  liftReaderT <| put (position + 4)
-  pure value
+  liftReaderT do
+    position <- get
+    value <- liftStateT <| readUInt32LE buffer position
+    put (position + 4)
+    pure value
 
 -- Replay
 
@@ -204,10 +216,8 @@ newtype Replay = Replay
   { header :: Section Header
   }
 
-getReplay
-  :: forall e. ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) Replay
+getReplay :: Parser Replay
 getReplay = do
-  buffer <- ask
   header <- getSection getHeader
   pure (Replay { header })
 
@@ -219,12 +229,8 @@ newtype Section a = Section
   , value :: a
   }
 
-getSection
-  :: forall a e
-  . (ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) a)
-  -> ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) (Section a)
+getSection :: forall a. Parser a -> Parser (Section a)
 getSection getValue = do
-  buffer <- ask
   size <- getUInt32LE
   crc <- getUInt32LE
   value <- getValue
@@ -236,12 +242,13 @@ newtype Header = Header
   {
   }
 
-getHeader
-  :: forall e. ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) Header
+getHeader :: Parser Header
 getHeader = pure (Header {})
 
 -- Main
 
+main ::
+  String -> Effect (buffer :: BUFFER, console :: CONSOLE, file :: FILE) Unit
 main file = readFile file \nullableError nullableBuffer -> do
   let result = case nullableToMaybe nullableError of
         Just error -> Left error
@@ -251,5 +258,5 @@ main file = readFile file \nullableError nullableBuffer -> do
   case result of
     Left error -> warn (inspect error)
     Right buffer -> do
-      Tuple { first: replay, second: _ } <- runStateT (runReaderT getReplay buffer) 0
+      Tuple replay _ <- runStateT (runReaderT getReplay buffer) 0
       log (inspect replay)
