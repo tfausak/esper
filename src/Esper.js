@@ -67,7 +67,9 @@ module.exports = {
     };
   },
 
-  unit: {},
+  toError: function (x) {
+    return new Error(x);
+  },
 
   warn: function (x) {
     return function () {

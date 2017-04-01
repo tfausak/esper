@@ -21,11 +21,10 @@ instance effectHasPure :: HasPure (Effect e) where
 
 -- Unit
 
-foreign import
-  data Unit :: Type
+newtype Unit = Unit {}
 
-foreign import
-  unit :: Unit
+unit :: Unit
+unit = Unit {}
 
 -- Console
 
@@ -81,6 +80,9 @@ foreign import
 foreign import
   data Error :: Type
 
+foreign import
+  toError :: String -> Error
+
 -- File
 
 foreign import
@@ -105,13 +107,59 @@ data Maybe a = Nothing | Just a
 nullableToMaybe :: forall a. Nullable a -> Maybe a
 nullableToMaybe = nullable Nothing Just
 
+-- Either
+
+data Either a b = Left a | Right b
+
+-- Replay
+
+newtype Replay = Replay
+  { header :: Section Header
+  }
+
+getReplay :: forall e. Buffer -> Effect (buffer :: BUFFER | e) Replay
+getReplay buffer = do
+  header <- getSection getHeader buffer
+  pure (Replay { header })
+
+-- Section
+
+newtype Section a = Section
+  { size :: Int
+  , crc :: Int
+  , value :: a
+  }
+
+getSection
+  :: forall a e
+  . (Buffer -> Effect (buffer :: BUFFER | e) a)
+  -> Buffer
+  -> Effect (buffer :: BUFFER | e) (Section a)
+getSection getValue buffer = do
+  size <- readUInt32LE buffer 0
+  crc <- readUInt32LE buffer 4
+  value <- getValue buffer
+  pure (Section { size, crc, value })
+
+-- Header
+
+newtype Header = Header
+  {
+  }
+
+getHeader :: forall e. Buffer -> Effect (buffer :: BUFFER | e) Header
+getHeader _ = pure (Header {})
+
 -- Main
 
-main file =  readFile file \nullableError nullableBuffer ->
-  case nullableToMaybe nullableError of
-    Just error -> warn (inspect error)
-    Nothing -> case nullableToMaybe nullableBuffer of
-      Nothing -> warn "no error but also no buffer"
-      Just buffer -> do
-        headerSize <- readUInt32LE buffer 0
-        log (inspect headerSize)
+main file = readFile file \nullableError nullableBuffer -> do
+  let result = case nullableToMaybe nullableError of
+        Just error -> Left error
+        Nothing -> case nullableToMaybe nullableBuffer of
+          Nothing -> Left (toError "neither error nor buffer")
+          Just buffer -> Right buffer
+  case result of
+    Left error -> warn (inspect error)
+    Right buffer -> do
+      replay <- getReplay buffer
+      log (inspect replay)
