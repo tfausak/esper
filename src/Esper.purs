@@ -142,6 +142,24 @@ get = state \x -> Tuple { first: x, second: x }
 put :: forall m s. HasPure m => s -> StateT s m Unit
 put x = state \_ -> Tuple { first: unit, second: x }
 
+-- Reader
+
+newtype ReaderT r m a = ReaderT (r -> m a)
+
+instance readerTHasBind :: HasBind m => HasBind (ReaderT r m) where
+  bind m f = ReaderT \x -> do
+    y <- runReaderT m x
+    runReaderT (f y) x
+
+instance readerTHasPure :: HasPure m => HasPure (ReaderT r m) where
+  pure x = ReaderT \_ -> pure x
+
+runReaderT :: forall a m r. ReaderT r m a -> r -> m a
+runReaderT (ReaderT f) = f
+
+ask :: forall m r. HasPure m => ReaderT r m r
+ask = ReaderT pure
+
 -- Add
 
 class HasAdd a where
@@ -157,13 +175,14 @@ infixl 6 add as +
 
 -- Helper
 
-getUInt32LE :: forall e. Buffer -> StateT Int (Effect (buffer :: BUFFER | e)) Int
-getUInt32LE buffer = do
-  position <- get
-  value <- StateT \s -> do
+getUInt32LE :: forall e. ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) Int
+getUInt32LE = do
+  buffer <- ask
+  position <- ReaderT \_ -> get
+  value <- ReaderT \_ -> StateT \s -> do
     x <- readUInt32LE buffer position
     pure (Tuple { first: x, second: s })
-  put (position + 4)
+  ReaderT \_ -> put (position + 4)
   pure value
 
 -- Replay
@@ -173,9 +192,10 @@ newtype Replay = Replay
   }
 
 getReplay
-  :: forall e. Buffer -> StateT Int (Effect (buffer :: BUFFER | e)) Replay
-getReplay buffer = do
-  header <- getSection getHeader buffer
+  :: forall e. ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) Replay
+getReplay = do
+  buffer <- ask
+  header <- getSection getHeader
   pure (Replay { header })
 
 -- Section
@@ -188,13 +208,13 @@ newtype Section a = Section
 
 getSection
   :: forall a e
-  . (Buffer -> StateT Int (Effect (buffer :: BUFFER | e)) a)
-  -> Buffer
-  -> StateT Int (Effect (buffer :: BUFFER | e)) (Section a)
-getSection getValue buffer = do
-  size <- getUInt32LE buffer
-  crc <- getUInt32LE buffer
-  value <- getValue buffer
+  . (ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) a)
+  -> ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) (Section a)
+getSection getValue = do
+  buffer <- ask
+  size <- getUInt32LE
+  crc <- getUInt32LE
+  value <- getValue
   pure (Section { size, crc, value })
 
 -- Header
@@ -204,8 +224,8 @@ newtype Header = Header
   }
 
 getHeader
-  :: forall e. Buffer -> StateT Int (Effect (buffer :: BUFFER | e)) Header
-getHeader _ = pure (Header {})
+  :: forall e. ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) Header
+getHeader = pure (Header {})
 
 -- Main
 
@@ -218,5 +238,5 @@ main file = readFile file \nullableError nullableBuffer -> do
   case result of
     Left error -> warn (inspect error)
     Right buffer -> do
-      Tuple { first: replay, second: _ } <- runStateT (getReplay buffer) 0
+      Tuple { first: replay, second: _ } <- runStateT (runReaderT getReplay buffer) 0
       log (inspect replay)
