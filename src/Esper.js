@@ -28,6 +28,12 @@ module.exports = {
     }
   },
 
+  intAdd: function (x) {
+    return function (y) {
+      return x + y;
+    };
+  },
+
   log: function (x) {
     return function () {
       console.log(x);
