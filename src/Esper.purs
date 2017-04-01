@@ -118,7 +118,7 @@ newtype Tuple a b = Tuple
   , second :: b
   }
 
--- State
+-- StateT
 
 newtype StateT s m a = StateT (s -> m (Tuple a s))
 
@@ -133,16 +133,21 @@ instance stateTHasPure :: HasPure m => HasPure (StateT s m) where
 runStateT :: forall a m s. StateT s m a -> s -> m (Tuple a s)
 runStateT (StateT f) = f
 
-state :: forall a m s. HasPure m => (s -> Tuple a s) -> StateT s m a
-state f = StateT \x -> pure (f x)
+-- State
 
-get :: forall m s. HasPure m => StateT s m s
+class HasState s m | m -> s where
+  state :: forall a. (s -> Tuple a s) -> m a
+
+instance stateTHasState :: HasPure m => HasState s (StateT s m) where
+  state f = StateT \x -> pure (f x)
+
+get :: forall m s. HasState s m => m s
 get = state \x -> Tuple { first: x, second: x }
 
-put :: forall m s. HasPure m => s -> StateT s m Unit
+put :: forall m s. HasState s m => s -> m Unit
 put x = state \_ -> Tuple { first: unit, second: x }
 
--- Reader
+-- ReaderT
 
 newtype ReaderT r m a = ReaderT (r -> m a)
 
@@ -157,8 +162,13 @@ instance readerTHasPure :: (HasBind m, HasPure m) => HasPure (ReaderT r m) where
 runReaderT :: forall a m r. ReaderT r m a -> r -> m a
 runReaderT (ReaderT f) = f
 
-ask :: forall m r. HasPure m => ReaderT r m r
-ask = ReaderT pure
+-- Reader
+
+class HasAsk r m | m -> r where
+  ask :: m r
+
+instance readerTHasAsk :: HasPure m => HasAsk r (ReaderT r m) where
+  ask = ReaderT pure
 
 -- Lift
 
