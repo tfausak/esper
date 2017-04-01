@@ -142,6 +142,11 @@ get = state \x -> Tuple { first: x, second: x }
 put :: forall m s. HasPure m => s -> StateT s m Unit
 put x = state \_ -> Tuple { first: unit, second: x }
 
+liftStateT :: forall a m s. HasBind m => HasPure m => m a -> StateT s m a
+liftStateT f = StateT \s -> do
+  x <- f
+  pure (Tuple { first: x, second: s })
+
 -- Reader
 
 newtype ReaderT r m a = ReaderT (r -> m a)
@@ -152,13 +157,16 @@ instance readerTHasBind :: HasBind m => HasBind (ReaderT r m) where
     runReaderT (f y) x
 
 instance readerTHasPure :: HasPure m => HasPure (ReaderT r m) where
-  pure x = ReaderT \_ -> pure x
+  pure x = liftReaderT <| pure x
 
 runReaderT :: forall a m r. ReaderT r m a -> r -> m a
 runReaderT (ReaderT f) = f
 
 ask :: forall m r. HasPure m => ReaderT r m r
 ask = ReaderT pure
+
+liftReaderT :: forall a m r. m a -> ReaderT r m a
+liftReaderT x = ReaderT \_ -> x
 
 -- Add
 
@@ -173,16 +181,21 @@ instance intHasAdd :: HasAdd Int where
 
 infixl 6 add as +
 
+-- Apply
+
+apply :: forall a b. (a -> b) -> a -> b
+apply f x = f x
+
+infixr 1 apply as <|
+
 -- Helper
 
 getUInt32LE :: forall e. ReaderT Buffer (StateT Int (Effect (buffer :: BUFFER | e))) Int
 getUInt32LE = do
   buffer <- ask
-  position <- ReaderT \_ -> get
-  value <- ReaderT \_ -> StateT \s -> do
-    x <- readUInt32LE buffer position
-    pure (Tuple { first: x, second: s })
-  ReaderT \_ -> put (position + 4)
+  position <- liftReaderT get
+  value <- liftReaderT <| liftStateT <| readUInt32LE buffer position
+  liftReaderT <| put (position + 4)
   pure value
 
 -- Replay
