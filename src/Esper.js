@@ -4,7 +4,13 @@ const fs = require('fs');
 
 module.exports = {
 
-  effectBind: function (x) {
+  addInt: function (x) {
+    return function (y) {
+      return x + y;
+    };
+  },
+
+  bindEffect: function (x) {
     return function (f) {
       return function () {
         return f(x())();
@@ -12,25 +18,10 @@ module.exports = {
     };
   },
 
-  effectPure: function (x) {
-    return function () {
-      return x;
-    };
-  },
-
   inspect: function (x) {
-    if (x === undefined) {
-      return 'undefined';
-    } else if (x === null) {
-      return 'null';
-    } else {
-      return x.toString();
-    }
-  },
-
-  intAdd: function (x) {
-    return function (y) {
-      return x + y;
+    return function () {
+      console.dir(x, { colors: true, depth: null });
+      return {};
     };
   },
 
@@ -53,12 +44,21 @@ module.exports = {
     };
   },
 
+  pureEffect: function (x) {
+    return function () {
+      return x;
+    };
+  },
+
   readFile: function (x) {
     return function (f) {
       return function () {
-        fs.readFile(x, function (error, data) {
-          f(error)(data)();
-          return {};
+        fs.readFile(x, function (error, buffer) {
+          if (error) {
+            f(error)(null)();
+          } else {
+            f(null)(buffer)();
+          }
         });
         return {};
       };
@@ -73,9 +73,17 @@ module.exports = {
     };
   },
 
+  throw: function (x) {
+    return function () {
+      throw x;
+    };
+  },
+
   toError: function (x) {
     return new Error(x);
   },
+
+  unit: {},
 
   warn: function (x) {
     return function () {
