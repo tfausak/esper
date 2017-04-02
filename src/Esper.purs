@@ -48,11 +48,47 @@ getSection getValue = do
   pure (Section { size, crc, value })
 
 newtype Header = Header
-  {
+  { majorVersion :: Int
+  , minorVersion :: Int
+  , label :: Text
   }
 
 getHeader :: Parser Header
-getHeader = pure (Header {})
+getHeader = do
+  majorVersion <- getUInt32LE
+  minorVersion <- getUInt32LE
+  label <- getText
+  pure (Header { majorVersion, minorVersion, label })
+
+newtype Text = Text
+  { size :: Int
+  , value :: String
+  }
+
+getText :: Parser Text
+getText = do
+  size <- getInt32LE
+  value <- getString size
+  pure (Text { size, value })
+
+getString :: Int -> Parser String
+getString size = do
+  buffer <- ask
+  liftReader (do
+    start <- get
+    let end = start + Offset size
+    value <- liftState (readString buffer start end)
+    put (end + Offset 1)
+    pure value)
+
+getInt32LE :: Parser Int
+getInt32LE = do
+  buffer <- ask
+  liftReader (do
+    position <- get
+    value <- liftState (readInt32LE buffer position)
+    put (position + Offset 4)
+    pure value)
 
 getUInt32LE :: Parser Int
 getUInt32LE = do
@@ -60,7 +96,7 @@ getUInt32LE = do
   liftReader (do
     position <- get
     value <- liftState (readUInt32LE buffer position)
-    put (Offset (offsetValue position + 4))
+    put (position + Offset 4)
     pure value)
 
 -- Effect
@@ -91,6 +127,9 @@ foreign import
 
 instance intHasAdd :: HasAdd Int where
   add = addInt
+
+instance offsetHasAdd :: HasAdd Offset where
+  add (Offset x) (Offset y) = Offset (x + y)
 
 -- Pure
 
@@ -167,13 +206,17 @@ foreign import
 
 newtype Offset = Offset Int
 
-offsetValue :: Offset -> Int
-offsetValue (Offset x) = x
-
 -- Buffer
 
 foreign import
   data Buffer :: Type
+
+foreign import
+  readInt32LE :: forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Int
+
+foreign import
+  readString ::
+    forall e. Buffer -> Offset -> Offset -> Effect (error :: ERROR | e) String
 
 foreign import
   readUInt32LE :: forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Int

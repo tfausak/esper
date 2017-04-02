@@ -65,6 +65,24 @@ module.exports = {
     };
   },
 
+  readInt32LE: function (buffer) {
+    return function (offset) {
+      return function () {
+        return buffer.readInt32LE(offset);
+      };
+    };
+  },
+
+  readString: function (buffer) {
+    return function (start) {
+      return function (end) {
+        return function () {
+          return buffer.toString('utf8', start, end);
+        };
+      };
+    };
+  },
+
   readUInt32LE: function (buffer) {
     return function (offset) {
       return function () {
