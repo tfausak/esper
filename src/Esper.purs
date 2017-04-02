@@ -51,6 +51,7 @@ newtype Header = Header
   { majorVersion :: Int
   , minorVersion :: Int
   , label :: Text
+  , properties :: Dictionary Property
   }
 
 getHeader :: Parser Header
@@ -58,12 +59,93 @@ getHeader = do
   majorVersion <- getUInt32LE
   minorVersion <- getUInt32LE
   label <- getText
-  pure (Header { majorVersion, minorVersion, label })
+  properties <- getDictionary getProperty
+  pure (Header { majorVersion, minorVersion, label, properties })
+
+newtype Dictionary a = Dictionary
+  { value :: Array (Tuple Text a)
+  , lastKey :: Text
+  }
+
+getDictionary :: forall a. Parser a -> Parser (Dictionary a)
+getDictionary getValue = do
+  Tuple value lastKey <- getDictionaryElements getValue
+  pure (Dictionary { value, lastKey })
+
+getDictionaryElements ::
+  forall a. Parser a -> Parser (Tuple (Array (Tuple Text a)) Text)
+getDictionaryElements getValue = do
+  Tuple key maybeValue <- getDictionaryElement getValue
+  case maybeValue of
+    Nothing -> pure (Tuple [] key)
+    Just value -> do
+      let element = Tuple key value
+      Tuple elements lastKey <- getDictionaryElements getValue
+      pure (Tuple ([element] + elements) lastKey)
+
+getDictionaryElement :: forall a. Parser a -> Parser (Tuple Text (Maybe a))
+getDictionaryElement getValue = do
+  key <- getText
+  if (unText key).value == "None\x00"
+    then pure (Tuple key Nothing)
+    else do
+      value <- getValue
+      pure (Tuple key (Just value))
+
+newtype List a = List (Array a)
+
+getList :: forall a. Parser a -> Parser (List a)
+getList _ = todo "getList"
+
+newtype Property = Property
+  { kind :: Text
+  , size :: Int64
+  , value :: PropertyValue
+  }
+
+getProperty :: Parser Property
+getProperty = do
+  kind <- getText
+  size <- getUInt64LE
+  value <- getPropertyValue kind
+  pure (Property { kind, size, value })
+
+todo :: forall a. String -> Parser a
+todo x = liftReader (liftState (throw (toError x)))
+
+data PropertyValue
+  = ArrayProperty (List (Dictionary Property))
+  | BoolProperty Int
+  | ByteProperty Text (Maybe Text)
+  | FloatProperty Number
+  | IntProperty Int
+  | NameProperty Text
+  | QWordProperty Int
+  | StrProperty Text
+
+getPropertyValue :: Text -> Parser PropertyValue
+getPropertyValue kind = case (unText kind).value of
+  "FloatProperty\x00" -> do
+    x <- getFloatLE
+    pure (FloatProperty x)
+  "IntProperty\x00" -> do
+    x <- getUInt32LE
+    pure (IntProperty x)
+  "NameProperty\x00" -> do
+    x <- getText
+    pure (NameProperty x)
+  "StrProperty\x00" -> do
+    x <- getText
+    pure (StrProperty x)
+  x -> todo x
 
 newtype Text = Text
   { size :: Int
   , value :: String
   }
+
+unText :: Text -> { size :: Int, value :: String }
+unText (Text x) = x
 
 getText :: Parser Text
 getText = do
@@ -78,7 +160,16 @@ getString size = do
     start <- get
     let end = start + Offset size
     value <- liftState (readString buffer start end)
-    put (end + Offset 1)
+    put end
+    pure value)
+
+getFloatLE :: Parser Number
+getFloatLE = do
+  buffer <- ask
+  liftReader (do
+    position <- get
+    value <- liftState (readFloatLE buffer position)
+    put (position + Offset 4)
     pure value)
 
 getInt32LE :: Parser Int
@@ -99,6 +190,20 @@ getUInt32LE = do
     put (position + Offset 4)
     pure value)
 
+newtype Int64 = Int64
+  { high :: Int
+  , low :: Int
+  }
+
+getUInt64LE :: Parser Int64
+getUInt64LE = do
+  buffer <- ask
+  liftReader (do
+    position <- get
+    value <- liftState (readUInt64LE buffer position)
+    put (position + Offset 8)
+    pure (Int64 value))
+
 -- Effect
 
 foreign import
@@ -115,12 +220,31 @@ foreign import
 foreign import
   unit :: Unit
 
+-- Equal
+
+class HasEqual a where
+  equal :: a -> a -> Boolean
+
+infix 4 equal as ==
+
+foreign import
+  equalString :: String -> String -> Boolean
+
+instance stringHasEqual :: HasEqual String where
+  equal = equalString
+
 -- Add
 
 class HasAdd a where
   add :: a -> a -> a
 
 infixl 6 add as +
+
+foreign import
+  addArray :: forall a. Array a -> Array a -> Array a
+
+instance arrayHasAdd :: HasAdd (Array a) where
+  add = addArray
 
 foreign import
   addInt :: Int -> Int -> Int
@@ -212,6 +336,10 @@ foreign import
   data Buffer :: Type
 
 foreign import
+  readFloatLE ::
+    forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Number
+
+foreign import
   readInt32LE :: forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Int
 
 foreign import
@@ -220,6 +348,13 @@ foreign import
 
 foreign import
   readUInt32LE :: forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Int
+
+foreign import
+  readUInt64LE ::
+    forall e.
+    Buffer ->
+    Offset ->
+    Effect (error :: ERROR | e) { high :: Int, low :: Int }
 
 -- Nullable
 

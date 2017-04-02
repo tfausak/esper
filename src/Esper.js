@@ -4,6 +4,12 @@ const fs = require('fs');
 
 module.exports = {
 
+  addArray: function (x) {
+    return function (y) {
+      return x.concat(y);
+    };
+  },
+
   addInt: function (x) {
     return function (y) {
       return x + y;
@@ -15,6 +21,12 @@ module.exports = {
       return function () {
         return f(x())();
       };
+    };
+  },
+
+  equalString: function (x) {
+    return function (y) {
+      return x === y;
     };
   },
 
@@ -65,6 +77,14 @@ module.exports = {
     };
   },
 
+  readFloatLE: function (buffer) {
+    return function (offset) {
+      return function () {
+        return buffer.readFloatLE(offset);
+      };
+    };
+  },
+
   readInt32LE: function (buffer) {
     return function (offset) {
       return function () {
@@ -87,6 +107,16 @@ module.exports = {
     return function (offset) {
       return function () {
         return buffer.readUInt32LE(offset);
+      };
+    };
+  },
+
+  readUInt64LE: function (buffer) {
+    return function (offset) {
+      return function () {
+        const high = buffer.readUInt32LE(offset);
+        const low = buffer.readUInt32LE(offset + 4);
+        return { high: high, low: low };
       };
     };
   },
