@@ -35,8 +35,8 @@ getReplay = do
   pure (Replay { header })
 
 newtype Section a = Section
-  { size :: Int
-  , crc :: Int
+  { size :: UInt32
+  , crc :: UInt32
   , value :: a
   }
 
@@ -48,8 +48,8 @@ getSection getValue = do
   pure (Section { size, crc, value })
 
 newtype Header = Header
-  { majorVersion :: Int
-  , minorVersion :: Int
+  { majorVersion :: UInt32
+  , minorVersion :: UInt32
   , label :: Text
   , properties :: Dictionary Property
   }
@@ -117,8 +117,8 @@ data PropertyValue
   = ArrayProperty (List (Dictionary Property))
   | BoolProperty Int
   | ByteProperty Text (Maybe Text)
-  | FloatProperty Number
-  | IntProperty Int
+  | FloatProperty Float32
+  | IntProperty UInt32
   | NameProperty Text
   | QWordProperty Int
   | StrProperty Text
@@ -126,7 +126,7 @@ data PropertyValue
 getPropertyValue :: Text -> Parser PropertyValue
 getPropertyValue kind = case (unText kind).value of
   "FloatProperty\x00" -> do
-    x <- getFloatLE
+    x <- getFloat32LE
     pure (FloatProperty x)
   "IntProperty\x00" -> do
     x <- getUInt32LE
@@ -140,11 +140,11 @@ getPropertyValue kind = case (unText kind).value of
   x -> todo x
 
 newtype Text = Text
-  { size :: Int
+  { size :: Int32
   , value :: String
   }
 
-unText :: Text -> { size :: Int, value :: String }
+unText :: Text -> { size :: Int32, value :: String }
 unText (Text x) = x
 
 getText :: Parser Text
@@ -153,8 +153,8 @@ getText = do
   value <- getString size
   pure (Text { size, value })
 
-getString :: Int -> Parser String
-getString size = do
+getString :: Int32 -> Parser String
+getString (Int32 size) = do
   buffer <- ask
   liftReader (do
     start <- get
@@ -163,32 +163,38 @@ getString size = do
     put end
     pure value)
 
-getFloatLE :: Parser Number
-getFloatLE = do
+newtype Float32 = Float32 Number
+
+getFloat32LE :: Parser Float32
+getFloat32LE = do
   buffer <- ask
   liftReader (do
     position <- get
     value <- liftState (readFloatLE buffer position)
     put (position + Offset 4)
-    pure value)
+    pure (Float32 value))
 
-getInt32LE :: Parser Int
+newtype Int32 = Int32 Int
+
+getInt32LE :: Parser Int32
 getInt32LE = do
   buffer <- ask
   liftReader (do
     position <- get
     value <- liftState (readInt32LE buffer position)
     put (position + Offset 4)
-    pure value)
+    pure (Int32 value))
 
-getUInt32LE :: Parser Int
+newtype UInt32 = UInt32 Int
+
+getUInt32LE :: Parser UInt32
 getUInt32LE = do
   buffer <- ask
   liftReader (do
     position <- get
     value <- liftState (readUInt32LE buffer position)
     put (position + Offset 4)
-    pure value)
+    pure (UInt32 value))
 
 newtype Int64 = Int64
   { high :: Int
