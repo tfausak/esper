@@ -86,7 +86,7 @@ getDictionaryElements getValue = do
 getDictionaryElement :: forall a. Parser a -> Parser (Tuple Text (Maybe a))
 getDictionaryElement getValue = do
   key <- getText
-  if (unText key).value == "None\x00"
+  if (unpack key).value == "None\x00"
     then pure (Tuple key Nothing)
     else do
       value <- getValue
@@ -124,7 +124,7 @@ data PropertyValue
   | StrProperty Text
 
 getPropertyValue :: Text -> Parser PropertyValue
-getPropertyValue kind = case (unText kind).value of
+getPropertyValue kind = case (unpack kind).value of
   "FloatProperty\x00" -> do
     x <- getFloat32LE
     pure (FloatProperty x)
@@ -144,9 +144,6 @@ newtype Text = Text
   , value :: String
   }
 
-unText :: Text -> { size :: Int32, value :: String }
-unText (Text x) = x
-
 getText :: Parser Text
 getText = do
   size <- getInt32LE
@@ -154,11 +151,11 @@ getText = do
   pure (Text { size, value })
 
 getString :: Int32 -> Parser String
-getString (Int32 size) = do
+getString size = do
   buffer <- ask
   liftReader (do
     start <- get
-    let end = start + Offset size
+    let end = start + Offset (unpack size)
     value <- liftState (readString buffer start end)
     put end
     pure value)
@@ -210,6 +207,20 @@ getUInt64LE = do
     put (position + Offset 8)
     pure (Int64 value))
 
+-- Unpack
+
+class HasUnpack a b | a -> b where
+  unpack :: a -> b
+
+instance int32HasUnpack :: HasUnpack Int32 Int where
+  unpack (Int32 x) = x
+
+instance offsetHasUnpack :: HasUnpack Offset Int where
+  unpack (Offset x) = x
+
+instance textHasUnpack :: HasUnpack Text { size :: Int32, value :: String } where
+  unpack (Text x) = x
+
 -- Effect
 
 foreign import
@@ -259,7 +270,7 @@ instance intHasAdd :: HasAdd Int where
   add = addInt
 
 instance offsetHasAdd :: HasAdd Offset where
-  add (Offset x) (Offset y) = Offset (x + y)
+  add x y = Offset (unpack x + unpack y)
 
 -- Pure
 
