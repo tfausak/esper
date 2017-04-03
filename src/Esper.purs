@@ -27,12 +27,14 @@ type Parser a = forall e.
 
 newtype Replay = Replay
   { header :: Section Header
+  , content :: Section Content
   }
 
 getReplay :: Parser Replay
 getReplay = do
   header <- getSection getHeader
-  pure (Replay { header })
+  content <- getSection getContent
+  pure (Replay { header, content })
 
 newtype Section a = Section
   { size :: UInt32
@@ -61,6 +63,93 @@ getHeader = do
   label <- getText
   properties <- getDictionary getProperty
   pure (Header { majorVersion, minorVersion, label, properties })
+
+newtype Content = Content
+  { levels :: List Text
+  , keyFrames :: List KeyFrame
+  , size :: UInt32
+  , frames :: Array Frame
+  , messages :: List Message
+  , marks :: List Mark
+  , packages :: List Text
+  , objects :: List Text
+  , names :: List Text
+  , classMappings :: List ClassMapping
+  , caches :: List Cache
+  }
+
+getContent :: Parser Content
+getContent = do
+  levels <- getList getText
+  keyFrames <- getList getKeyFrame
+  size <- getUInt32LE
+  frames <- getFrames size
+  messages <- getList getMessage
+  marks <- getList getMark
+  packages <- getList getText
+  objects <- getList getText
+  names <- getList getText
+  classMappings <- getList getClassMapping
+  caches <- getList getCache
+  pure (Content { levels, keyFrames, size, frames, messages, marks, packages, objects, names, classMappings, caches })
+
+newtype Cache = Cache
+  { classId :: UInt32
+  , parentCacheId :: UInt32
+  , cacheId :: UInt32
+  , attributeMappings :: List AttributeMapping
+  }
+
+getCache :: Parser Cache
+getCache = todo "getCache"
+
+newtype AttributeMapping = AttributeMapping
+  { objectId :: UInt32
+  , streamId :: UInt32
+  }
+
+newtype ClassMapping = ClassMapping
+  { name :: Text
+  , streamId :: UInt32
+  }
+
+getClassMapping :: Parser ClassMapping
+getClassMapping = todo "getClassMapping"
+
+newtype Mark = Mark
+  { value :: Text
+  , frame :: UInt32
+  }
+
+getMark :: Parser Mark
+getMark = todo "getMark"
+
+newtype Message = Message
+  { frame :: UInt32
+  , name :: Text
+  , value :: Text
+  }
+
+getMessage :: Parser Message
+getMessage = todo "getMessage"
+
+newtype Frame = Frame
+  {
+  }
+
+getFrames :: UInt32 -> Parser (Array Frame)
+getFrames size = case unpack size of
+  0 -> pure []
+  _ -> todo "getFrames"
+
+newtype KeyFrame = KeyFrame
+  { time :: Float32
+  , frame :: UInt32
+  , position :: UInt32
+  }
+
+getKeyFrame :: Parser KeyFrame
+getKeyFrame = todo "getKeyFrame"
 
 newtype Dictionary a = Dictionary
   { value :: Array (Tuple Text a)
@@ -92,10 +181,21 @@ getDictionaryElement getValue = do
       value <- getValue
       pure (Tuple key (Just value))
 
-newtype List a = List (Array a)
+newtype List a = List
+  { size :: UInt32
+  , value :: Array a
+  }
 
 getList :: forall a. Parser a -> Parser (List a)
-getList _ = todo "getList"
+getList getValue = do
+  size <- getUInt32LE
+  value <- getListElements getValue size
+  pure (List { size, value })
+
+getListElements :: forall a. Parser a -> UInt32 -> Parser (Array a)
+getListElements getValue size = case unpack size of
+  0 -> pure []
+  _ -> todo "getListElements"
 
 newtype Property = Property
   { kind :: Text
@@ -220,6 +320,9 @@ instance offsetHasUnpack :: HasUnpack Offset Int where
 
 instance textHasUnpack :: HasUnpack Text { size :: Int32, value :: String } where
   unpack (Text x) = x
+
+instance uInt32HasUnpack :: HasUnpack UInt32 Int where
+  unpack (UInt32 x) = x
 
 -- Effect
 
