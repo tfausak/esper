@@ -2,6 +2,16 @@
 
 const fs = require('fs');
 
+const bufferRead = function (type) {
+  return function (buffer) {
+    return function (offset) {
+      return function () {
+        return buffer['read' + type](offset);
+      };
+    };
+  }
+};
+
 module.exports = {
 
   addArray: function (x) {
@@ -77,21 +87,9 @@ module.exports = {
     };
   },
 
-  readFloatLE: function (buffer) {
-    return function (offset) {
-      return function () {
-        return buffer.readFloatLE(offset);
-      };
-    };
-  },
+  readFloatLE: bufferRead('FloatLE'),
 
-  readInt32LE: function (buffer) {
-    return function (offset) {
-      return function () {
-        return buffer.readInt32LE(offset);
-      };
-    };
-  },
+  readInt32LE: bufferRead('Int32LE'),
 
   readString: function (buffer) {
     return function (start) {
@@ -103,21 +101,9 @@ module.exports = {
     };
   },
 
-  readUInt8: function (buffer) {
-    return function (offset) {
-      return function () {
-        return buffer.readUInt8(offset);
-      };
-    };
-  },
+  readUInt8: bufferRead('UInt8'),
 
-  readUInt32LE: function (buffer) {
-    return function (offset) {
-      return function () {
-        return buffer.readUInt32LE(offset);
-      };
-    };
-  },
+  readUInt32LE: bufferRead('UInt32LE'),
 
   readUInt64LE: function (buffer) {
     return function (offset) {
