@@ -138,7 +138,7 @@ newtype Frame = Frame
   }
 
 getFrames :: UInt32 -> Parser (Array Frame)
-getFrames size = case unpack size of
+getFrames size = case unpackUInt32 size of
   0 -> pure []
   _ -> todo "getFrames"
 
@@ -175,7 +175,7 @@ getDictionaryElements getValue = do
 getDictionaryElement :: forall a. Parser a -> Parser (Tuple Text (Maybe a))
 getDictionaryElement getValue = do
   key <- getText
-  if (unpack key).value == "None\x00"
+  if (unpackText key).value == "None\x00"
     then pure (Tuple key Nothing)
     else do
       value <- getValue
@@ -193,7 +193,7 @@ getList getElement = do
   pure (List { size, value })
 
 getListElements :: forall a. Parser a -> UInt32 -> Parser (Array a)
-getListElements getElement size = case unpack size of
+getListElements getElement size = case unpackUInt32 size of
   0 -> pure []
   _ -> do
     element <- getElement
@@ -227,7 +227,7 @@ data PropertyValue
   | StrProperty Text
 
 getPropertyValue :: Text -> Parser PropertyValue
-getPropertyValue kind = case (unpack kind).value of
+getPropertyValue kind = case (unpackText kind).value of
   "ArrayProperty\x00" -> do
     x <- getList (getDictionary getProperty)
     pure (ArrayProperty x)
@@ -236,7 +236,7 @@ getPropertyValue kind = case (unpack kind).value of
     pure (BoolProperty x)
   "ByteProperty\x00" -> do
     k <- getText
-    v <- case (unpack k).value of
+    v <- case (unpackText k).value of
       "OnlinePlatform_Steam\x00" -> pure Nothing
       _ -> do
         v <- getText
@@ -275,7 +275,7 @@ getString size = do
   buffer <- ask
   liftReader (do
     start <- get
-    let end = start + Offset (unpack size)
+    let end = start + Offset (unpackInt32 size)
     value <- liftState (readString buffer start end)
     put end
     pure value)
@@ -340,20 +340,17 @@ getUInt64LE = do
 
 -- Unpack
 
-class HasUnpack a b | a -> b where
-  unpack :: a -> b
+unpackInt32 :: Int32 -> Int
+unpackInt32 (Int32 x) = x
 
-instance int32HasUnpack :: HasUnpack Int32 Int where
-  unpack (Int32 x) = x
+unpackOffset :: Offset -> Int
+unpackOffset (Offset x) = x
 
-instance offsetHasUnpack :: HasUnpack Offset Int where
-  unpack (Offset x) = x
+unpackText :: Text -> { size :: Int32, value :: String }
+unpackText (Text x) = x
 
-instance textHasUnpack :: HasUnpack Text { size :: Int32, value :: String } where
-  unpack (Text x) = x
-
-instance uInt32HasUnpack :: HasUnpack UInt32 Int where
-  unpack (UInt32 x) = x
+unpackUInt32 :: UInt32 -> Int
+unpackUInt32 (UInt32 x) = x
 
 -- Effect
 
@@ -404,7 +401,7 @@ instance intHasAdd :: HasAdd Int where
   add = addInt
 
 instance offsetHasAdd :: HasAdd Offset where
-  add x y = Offset (unpack x + unpack y)
+  add x y = Offset (unpackOffset x + unpackOffset y)
 
 -- Subtract
 
@@ -420,7 +417,7 @@ instance intHasSubtract :: HasSubtract Int where
   subtract = subtractInt
 
 instance uInt32HasSubtract :: HasSubtract UInt32 where
-  subtract x y = UInt32 (unpack x - unpack y)
+  subtract x y = UInt32 (unpackUInt32 x - unpackUInt32 y)
 
 -- Pure
 
