@@ -187,19 +187,22 @@ newtype List a = List
   }
 
 getList :: forall a. Parser a -> Parser (List a)
-getList getValue = do
+getList getElement = do
   size <- getUInt32LE
-  value <- getListElements getValue size
+  value <- getListElements getElement size
   pure (List { size, value })
 
 getListElements :: forall a. Parser a -> UInt32 -> Parser (Array a)
-getListElements getValue size = case unpack size of
+getListElements getElement size = case unpack size of
   0 -> pure []
-  _ -> todo "getListElements"
+  _ -> do
+    element <- getElement
+    elements <- getListElements getElement (size - UInt32 1)
+    pure ([element] + elements)
 
 newtype Property = Property
   { kind :: Text
-  , size :: Int64
+  , size :: UInt64
   , value :: PropertyValue
   }
 
@@ -215,16 +218,30 @@ todo x = liftReader (liftState (throw (toError x)))
 
 data PropertyValue
   = ArrayProperty (List (Dictionary Property))
-  | BoolProperty Int
+  | BoolProperty UInt8
   | ByteProperty Text (Maybe Text)
   | FloatProperty Float32
   | IntProperty UInt32
   | NameProperty Text
-  | QWordProperty Int
+  | QWordProperty UInt64
   | StrProperty Text
 
 getPropertyValue :: Text -> Parser PropertyValue
 getPropertyValue kind = case (unpack kind).value of
+  "ArrayProperty\x00" -> do
+    x <- getList (getDictionary getProperty)
+    pure (ArrayProperty x)
+  "BoolProperty\x00" -> do
+    x <- getUInt8
+    pure (BoolProperty x)
+  "ByteProperty\x00" -> do
+    k <- getText
+    v <- case (unpack k).value of
+      "OnlinePlatform_Steam\x00" -> pure Nothing
+      _ -> do
+        v <- getText
+        pure (Just v)
+    pure (ByteProperty k v)
   "FloatProperty\x00" -> do
     x <- getFloat32LE
     pure (FloatProperty x)
@@ -234,6 +251,9 @@ getPropertyValue kind = case (unpack kind).value of
   "NameProperty\x00" -> do
     x <- getText
     pure (NameProperty x)
+  "QWordProperty\x00" -> do
+    x <- getUInt64LE
+    pure (QWordProperty x)
   "StrProperty\x00" -> do
     x <- getText
     pure (StrProperty x)
@@ -271,6 +291,17 @@ getFloat32LE = do
     put (position + Offset 4)
     pure (Float32 value))
 
+newtype UInt8 = UInt8 Int
+
+getUInt8 :: Parser UInt8
+getUInt8 = do
+  buffer <- ask
+  liftReader (do
+    position <- get
+    value <- liftState (readUInt8 buffer position)
+    put (position + Offset 4)
+    pure (UInt8 value))
+
 newtype Int32 = Int32 Int
 
 getInt32LE :: Parser Int32
@@ -293,19 +324,19 @@ getUInt32LE = do
     put (position + Offset 4)
     pure (UInt32 value))
 
-newtype Int64 = Int64
+newtype UInt64 = UInt64
   { high :: Int
   , low :: Int
   }
 
-getUInt64LE :: Parser Int64
+getUInt64LE :: Parser UInt64
 getUInt64LE = do
   buffer <- ask
   liftReader (do
     position <- get
     value <- liftState (readUInt64LE buffer position)
     put (position + Offset 8)
-    pure (Int64 value))
+    pure (UInt64 value))
 
 -- Unpack
 
@@ -374,6 +405,22 @@ instance intHasAdd :: HasAdd Int where
 
 instance offsetHasAdd :: HasAdd Offset where
   add x y = Offset (unpack x + unpack y)
+
+-- Subtract
+
+class HasSubtract a where
+  subtract :: a -> a -> a
+
+infixl 6 subtract as -
+
+foreign import
+  subtractInt :: Int -> Int -> Int
+
+instance intHasSubtract :: HasSubtract Int where
+  subtract = subtractInt
+
+instance uInt32HasSubtract :: HasSubtract UInt32 where
+  subtract x y = UInt32 (unpack x - unpack y)
 
 -- Pure
 
@@ -465,6 +512,9 @@ foreign import
 foreign import
   readString ::
     forall e. Buffer -> Offset -> Offset -> Effect (error :: ERROR | e) String
+
+foreign import
+  readUInt8 :: forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Int
 
 foreign import
   readUInt32LE :: forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Int

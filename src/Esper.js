@@ -103,6 +103,14 @@ module.exports = {
     };
   },
 
+  readUInt8: function (buffer) {
+    return function (offset) {
+      return function () {
+        return buffer.readUInt8(offset);
+      };
+    };
+  },
+
   readUInt32LE: function (buffer) {
     return function (offset) {
       return function () {
@@ -118,6 +126,12 @@ module.exports = {
         const low = buffer.readUInt32LE(offset + 4);
         return { high: high, low: low };
       };
+    };
+  },
+
+  subtractInt: function (x) {
+    return function (y) {
+      return x - y;
     };
   },
 
