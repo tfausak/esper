@@ -206,7 +206,7 @@ getProperty = do
   pure (Property { kind, size, value })
 
 todo :: forall a. String -> Parser a
-todo x = liftReader (liftState (throw (toError x)))
+todo x = liftReader (liftState (throw (newError x)))
 
 data PropertyValue
   = ArrayProperty (List (Dictionary Property))
@@ -477,7 +477,7 @@ foreign import
   throw :: forall a e. Error -> Effect (error :: ERROR | e) a
 
 foreign import
-  toError :: String -> Error
+  newError :: String -> Error
 
 -- Offset
 

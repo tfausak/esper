@@ -54,6 +54,10 @@ module.exports = {
     };
   },
 
+  newError: function (x) {
+    return new Error(x);
+  },
+
   pureEffect: function (x) {
     return function () {
       return x;
@@ -105,10 +109,6 @@ module.exports = {
     return function () {
       throw x;
     };
-  },
-
-  toError: function (x) {
-    return new Error(x);
   },
 
   unit: {},
