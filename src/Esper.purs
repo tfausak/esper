@@ -15,7 +15,7 @@ main file = do
       inspect replay
 
 type Parser a = forall e.
-  Reader Buffer (State Offset (Effect (error :: ERROR | e))) a
+  Reader Buffer (State Offset (Effect (console :: CONSOLE, error :: ERROR | e))) a
 
 newtype Replay = Replay
   { header :: Section Header
@@ -93,12 +93,23 @@ newtype Cache = Cache
   }
 
 getCache :: Parser Cache
-getCache = todo "getCache"
+getCache = do
+  classId <- getUInt32LE
+  parentCacheId <- getUInt32LE
+  cacheId <- getUInt32LE
+  attributeMappings <- getList getAttributeMapping
+  pure (Cache { classId, parentCacheId, cacheId, attributeMappings })
 
 newtype AttributeMapping = AttributeMapping
   { objectId :: UInt32
   , streamId :: UInt32
   }
+
+getAttributeMapping :: Parser AttributeMapping
+getAttributeMapping = do
+  objectId <- getUInt32LE
+  streamId <- getUInt32LE
+  pure (AttributeMapping { objectId, streamId })
 
 newtype ClassMapping = ClassMapping
   { name :: Text
@@ -106,7 +117,10 @@ newtype ClassMapping = ClassMapping
   }
 
 getClassMapping :: Parser ClassMapping
-getClassMapping = todo "getClassMapping"
+getClassMapping = do
+  name <- getText
+  streamId <- getUInt32LE
+  pure (ClassMapping { name, streamId })
 
 newtype Mark = Mark
   { value :: Text
@@ -114,7 +128,10 @@ newtype Mark = Mark
   }
 
 getMark :: Parser Mark
-getMark = todo "getMark"
+getMark = do
+  value <- getText
+  frame <- getUInt32LE
+  pure (Mark { value, frame })
 
 newtype Message = Message
   { frame :: UInt32
@@ -130,9 +147,13 @@ newtype Frame = Frame
   }
 
 getFrames :: UInt32 -> Parser (Array Frame)
-getFrames size = case unpackUInt32 size of
-  0 -> pure []
-  _ -> todo "getFrames"
+getFrames size = liftReader do
+  liftState do
+    log "TODO: getFrames"
+    inspect size
+  position <- get
+  put (position + Offset (unpackUInt32 size))
+  pure []
 
 newtype KeyFrame = KeyFrame
   { time :: Float32
@@ -141,7 +162,11 @@ newtype KeyFrame = KeyFrame
   }
 
 getKeyFrame :: Parser KeyFrame
-getKeyFrame = todo "getKeyFrame"
+getKeyFrame = do
+  time <- getFloat32LE
+  frame <- getUInt32LE
+  position <- getUInt32LE
+  pure (KeyFrame { time, frame, position })
 
 newtype Dictionary a = Dictionary
   { value :: Array (Tuple Text a)
