@@ -291,7 +291,7 @@ getUInt8 = do
   liftReader (do
     position <- get
     value <- liftState (readUInt8 buffer position)
-    put (position + Offset 4)
+    put (position + Offset 1)
     pure (UInt8 value))
 
 newtype Int32 = Int32 Int
