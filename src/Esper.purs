@@ -10,17 +10,9 @@ module Esper
 main ::
   String -> Effect (console :: CONSOLE, error :: ERROR, file :: FILE) Unit
 main file = do
-  readFile file \nullableError nullableBuffer -> do
-    let result = case nullable Nothing Just nullableError of
-          Just error -> Left error
-          Nothing -> case nullable Nothing Just nullableBuffer of
-            Nothing -> Left (toError "neither error nor buffer")
-            Just buffer -> Right buffer
-    case result of
-      Left error -> throw error
-      Right buffer -> do
-        Tuple replay _ <- runState (runReader getReplay buffer) (Offset 0)
-        inspect replay
+  readFile file throw \buffer -> do
+      Tuple replay _ <- runState (runReader getReplay buffer) (Offset 0)
+      inspect replay
 
 type Parser a = forall e.
   Reader Buffer (State Offset (Effect (error :: ERROR | e))) a
@@ -552,7 +544,8 @@ foreign import
   readFile ::
     forall e.
     String ->
-    (Nullable Error -> Nullable Buffer -> Effect (file :: FILE | e) Unit) ->
+    (Error -> Effect e Unit) ->
+    (Buffer -> Effect e Unit) ->
     Effect (file :: FILE | e) Unit
 
 -- Reader

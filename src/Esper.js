@@ -74,15 +74,17 @@ module.exports = {
 
   readFile: function (x) {
     return function (f) {
-      return function () {
-        fs.readFile(x, function (error, buffer) {
-          if (error) {
-            f(error)(null)();
-          } else {
-            f(null)(buffer)();
-          }
-        });
-        return {};
+      return function (g) {
+        return function () {
+          fs.readFile(x, function (error, buffer) {
+            if (error) {
+              f(error)();
+            } else {
+              g(buffer)();
+            }
+          });
+          return {};
+        };
       };
     };
   },
