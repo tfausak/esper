@@ -317,18 +317,15 @@ getUInt32LE = do
     pure (UInt32 value))
 
 newtype UInt64 = UInt64
-  { high :: Int
-  , low :: Int
+  { high :: UInt32
+  , low :: UInt32
   }
 
 getUInt64LE :: Parser UInt64
 getUInt64LE = do
-  buffer <- ask
-  liftReader (do
-    position <- get
-    value <- liftState (readUInt64LE buffer position)
-    put (position + Offset 8)
-    pure (UInt64 value))
+  high <- getUInt32LE
+  low <- getUInt32LE
+  pure (UInt64 { high, low })
 
 -- Unpack
 
@@ -507,13 +504,6 @@ foreign import
 
 foreign import
   readUInt32LE :: forall e. Buffer -> Offset -> Effect (error :: ERROR | e) Int
-
-foreign import
-  readUInt64LE ::
-    forall e.
-    Buffer ->
-    Offset ->
-    Effect (error :: ERROR | e) { high :: Int, low :: Int }
 
 -- Maybe
 

@@ -95,16 +95,6 @@ module.exports = {
 
   readUInt32LE: bufferRead('UInt32LE'),
 
-  readUInt64LE: function (buffer) {
-    return function (offset) {
-      return function () {
-        const high = buffer.readUInt32LE(offset);
-        const low = buffer.readUInt32LE(offset + 4);
-        return { high: high, low: low };
-      };
-    };
-  },
-
   subtractInt: function (x) {
     return function (y) {
       return x - y;
