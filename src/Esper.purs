@@ -292,14 +292,21 @@ getFloat32LE = do
     put (position + Offset 4)
     pure (Float32 value))
 
-getInt32LE :: Parser Int32
-getInt32LE = do
+getGeneric :: forall a b e.
+  (Buffer -> Offset -> Effect (error :: ERROR | e) a) ->
+  Offset ->
+  (a -> b) ->
+  Reader Buffer (State Offset (Effect (error :: ERROR | e))) b
+getGeneric getValue size wrap = do
   buffer <- ask
-  liftReader (do
+  liftReader do
     position <- get
-    value <- liftState (readInt32LE buffer position)
-    put (position + Offset 4)
-    pure (Int32 value))
+    value <- liftState (getValue buffer position)
+    put (position + size)
+    pure (wrap value)
+
+getInt32LE :: Parser Int32
+getInt32LE = getGeneric readInt32LE (Offset 4) Int32
 
 getList :: forall a. Parser a -> Parser (List a)
 getList getElement = do
@@ -328,22 +335,10 @@ getText = do
   pure (Text { size, value })
 
 getUInt8 :: Parser UInt8
-getUInt8 = do
-  buffer <- ask
-  liftReader (do
-    position <- get
-    value <- liftState (readUInt8 buffer position)
-    put (position + Offset 1)
-    pure (UInt8 value))
+getUInt8 = getGeneric readUInt8 (Offset 1) UInt8
 
 getUInt32LE :: Parser UInt32
-getUInt32LE = do
-  buffer <- ask
-  liftReader (do
-    position <- get
-    value <- liftState (readUInt32LE buffer position)
-    put (position + Offset 4)
-    pure (UInt32 value))
+getUInt32LE = getGeneric readUInt32LE (Offset 4) UInt32
 
 getUInt64LE :: Parser UInt64
 getUInt64LE = do
