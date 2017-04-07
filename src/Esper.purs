@@ -9,37 +9,22 @@ module Esper
 
 main ::
   String -> Effect (console :: CONSOLE, error :: ERROR, file :: FILE) Unit
-main file = do
-  readFile file throw \buffer -> do
-      Tuple replay _ <- runState (runReader getReplay buffer) (Offset 0)
-      inspect replay
+main file = readFile file throw \buffer -> do
+  Tuple replay _offset <- runState (runReader getReplay buffer) (Offset 0)
+  inspect replay
 
-type Parser a = forall e.
-  Reader Buffer (State Offset (Effect (console :: CONSOLE, error :: ERROR | e))) a
+-- Types
 
 newtype Replay = Replay
   { header :: Section Header
   , content :: Section Content
   }
 
-getReplay :: Parser Replay
-getReplay = do
-  header <- getSection getHeader
-  content <- getSection getContent
-  pure (Replay { header, content })
-
 newtype Section a = Section
   { size :: UInt32
   , crc :: UInt32
   , value :: a
   }
-
-getSection :: forall a. Parser a -> Parser (Section a)
-getSection getValue = do
-  size <- getUInt32LE
-  crc <- getUInt32LE
-  value <- getValue
-  pure (Section { size, crc, value })
 
 newtype Header = Header
   { majorVersion :: UInt32
@@ -48,13 +33,21 @@ newtype Header = Header
   , properties :: Dictionary Property
   }
 
-getHeader :: Parser Header
-getHeader = do
-  majorVersion <- getUInt32LE
-  minorVersion <- getUInt32LE
-  label <- getText
-  properties <- getDictionary getProperty
-  pure (Header { majorVersion, minorVersion, label, properties })
+newtype Property = Property
+  { kind :: Text
+  , size :: UInt64
+  , value :: PropertyValue
+  }
+
+data PropertyValue
+  = ArrayProperty (List (Dictionary Property))
+  | BoolProperty UInt8
+  | ByteProperty Text (Maybe Text)
+  | FloatProperty Float32
+  | IntProperty UInt32
+  | NameProperty Text
+  | QWordProperty UInt64
+  | StrProperty Text
 
 newtype Content = Content
   { levels :: List Text
@@ -70,20 +63,31 @@ newtype Content = Content
   , caches :: List Cache
   }
 
-getContent :: Parser Content
-getContent = do
-  levels <- getList getText
-  keyFrames <- getList getKeyFrame
-  size <- getUInt32LE
-  frames <- getFrames size
-  messages <- getList getMessage
-  marks <- getList getMark
-  packages <- getList getText
-  objects <- getList getText
-  names <- getList getText
-  classMappings <- getList getClassMapping
-  caches <- getList getCache
-  pure (Content { levels, keyFrames, size, frames, messages, marks, packages, objects, names, classMappings, caches })
+newtype KeyFrame = KeyFrame
+  { time :: Float32
+  , frame :: UInt32
+  , position :: UInt32
+  }
+
+newtype Frame = Frame
+  {
+  }
+
+newtype Message = Message
+  { frame :: UInt32
+  , name :: Text
+  , value :: Text
+  }
+
+newtype Mark = Mark
+  { value :: Text
+  , frame :: UInt32
+  }
+
+newtype ClassMapping = ClassMapping
+  { name :: Text
+  , streamId :: UInt32
+  }
 
 newtype Cache = Cache
   { classId :: UInt32
@@ -92,136 +96,67 @@ newtype Cache = Cache
   , attributeMappings :: List AttributeMapping
   }
 
-getCache :: Parser Cache
-getCache = do
-  classId <- getUInt32LE
-  parentCacheId <- getUInt32LE
-  cacheId <- getUInt32LE
-  attributeMappings <- getList getAttributeMapping
-  pure (Cache { classId, parentCacheId, cacheId, attributeMappings })
-
 newtype AttributeMapping = AttributeMapping
   { objectId :: UInt32
   , streamId :: UInt32
   }
-
-getAttributeMapping :: Parser AttributeMapping
-getAttributeMapping = do
-  objectId <- getUInt32LE
-  streamId <- getUInt32LE
-  pure (AttributeMapping { objectId, streamId })
-
-newtype ClassMapping = ClassMapping
-  { name :: Text
-  , streamId :: UInt32
-  }
-
-getClassMapping :: Parser ClassMapping
-getClassMapping = do
-  name <- getText
-  streamId <- getUInt32LE
-  pure (ClassMapping { name, streamId })
-
-newtype Mark = Mark
-  { value :: Text
-  , frame :: UInt32
-  }
-
-getMark :: Parser Mark
-getMark = do
-  value <- getText
-  frame <- getUInt32LE
-  pure (Mark { value, frame })
-
-newtype Message = Message
-  { frame :: UInt32
-  , name :: Text
-  , value :: Text
-  }
-
-getMessage :: Parser Message
-getMessage = todo "getMessage"
-
-newtype Frame = Frame
-  {
-  }
-
-getFrames :: UInt32 -> Parser (Array Frame)
-getFrames size = liftReader do
-  liftState do
-    log "TODO: getFrames"
-    inspect size
-  position <- get
-  put (position + Offset (unpackUInt32 size))
-  pure []
-
-newtype KeyFrame = KeyFrame
-  { time :: Float32
-  , frame :: UInt32
-  , position :: UInt32
-  }
-
-getKeyFrame :: Parser KeyFrame
-getKeyFrame = do
-  time <- getFloat32LE
-  frame <- getUInt32LE
-  position <- getUInt32LE
-  pure (KeyFrame { time, frame, position })
 
 newtype Dictionary a = Dictionary
   { value :: Array (Tuple Text a)
   , lastKey :: Text
   }
 
-getDictionary :: forall a. Parser a -> Parser (Dictionary a)
-getDictionary getValue = do
-  Tuple value lastKey <- getDictionaryElements getValue
-  pure (Dictionary { value, lastKey })
+newtype Float32 = Float32 Number
 
-getDictionaryElements ::
-  forall a. Parser a -> Parser (Tuple (Array (Tuple Text a)) Text)
-getDictionaryElements getValue = do
-  Tuple key maybeValue <- getDictionaryElement getValue
-  case maybeValue of
-    Nothing -> pure (Tuple [] key)
-    Just value -> do
-      let element = Tuple key value
-      Tuple elements lastKey <- getDictionaryElements getValue
-      pure (Tuple ([element] + elements) lastKey)
-
-getDictionaryElement :: forall a. Parser a -> Parser (Tuple Text (Maybe a))
-getDictionaryElement getValue = do
-  key <- getText
-  if (unpackText key).value == "None\x00"
-    then pure (Tuple key Nothing)
-    else do
-      value <- getValue
-      pure (Tuple key (Just value))
+newtype Int32 = Int32 Int
 
 newtype List a = List
   { size :: UInt32
   , value :: Array a
   }
 
-getList :: forall a. Parser a -> Parser (List a)
-getList getElement = do
-  size <- getUInt32LE
-  value <- getListElements getElement size
-  pure (List { size, value })
-
-getListElements :: forall a. Parser a -> UInt32 -> Parser (Array a)
-getListElements getElement size = case unpackUInt32 size of
-  0 -> pure []
-  _ -> do
-    element <- getElement
-    elements <- getListElements getElement (size - UInt32 1)
-    pure ([element] + elements)
-
-newtype Property = Property
-  { kind :: Text
-  , size :: UInt64
-  , value :: PropertyValue
+newtype Text = Text
+  { size :: Int32
+  , value :: String
   }
+
+newtype UInt8 = UInt8 Int
+
+newtype UInt32 = UInt32 Int
+
+newtype UInt64 = UInt64
+  { high :: UInt32
+  , low :: UInt32
+  }
+
+-- Parser
+
+type Parser a = forall e.
+  Reader Buffer (State Offset (Effect (console :: CONSOLE, error :: ERROR | e))) a
+
+todo :: forall a. String -> Parser a
+todo x = liftReader (liftState (throw (newError x)))
+
+getReplay :: Parser Replay
+getReplay = do
+  header <- getSection getHeader
+  content <- getSection getContent
+  pure (Replay { header, content })
+
+getSection :: forall a. Parser a -> Parser (Section a)
+getSection getValue = do
+  size <- getUInt32LE
+  crc <- getUInt32LE
+  value <- getValue
+  pure (Section { size, crc, value })
+
+getHeader :: Parser Header
+getHeader = do
+  majorVersion <- getUInt32LE
+  minorVersion <- getUInt32LE
+  label <- getText
+  properties <- getDictionary getProperty
+  pure (Header { majorVersion, minorVersion, label, properties })
 
 getProperty :: Parser Property
 getProperty = do
@@ -229,19 +164,6 @@ getProperty = do
   size <- getUInt64LE
   value <- getPropertyValue kind
   pure (Property { kind, size, value })
-
-todo :: forall a. String -> Parser a
-todo x = liftReader (liftState (throw (newError x)))
-
-data PropertyValue
-  = ArrayProperty (List (Dictionary Property))
-  | BoolProperty UInt8
-  | ByteProperty Text (Maybe Text)
-  | FloatProperty Float32
-  | IntProperty UInt32
-  | NameProperty Text
-  | QWordProperty UInt64
-  | StrProperty Text
 
 getPropertyValue :: Text -> Parser PropertyValue
 getPropertyValue kind = case (unpackText kind).value of
@@ -276,28 +198,90 @@ getPropertyValue kind = case (unpackText kind).value of
     pure (StrProperty x)
   x -> todo x
 
-newtype Text = Text
-  { size :: Int32
-  , value :: String
-  }
+getContent :: Parser Content
+getContent = do
+  levels <- getList getText
+  keyFrames <- getList getKeyFrame
+  size <- getUInt32LE
+  frames <- getFrames size
+  messages <- getList getMessage
+  marks <- getList getMark
+  packages <- getList getText
+  objects <- getList getText
+  names <- getList getText
+  classMappings <- getList getClassMapping
+  caches <- getList getCache
+  pure (Content { levels, keyFrames, size, frames, messages, marks, packages, objects, names, classMappings, caches })
 
-getText :: Parser Text
-getText = do
-  size <- getInt32LE
-  value <- getString size
-  pure (Text { size, value })
+getKeyFrame :: Parser KeyFrame
+getKeyFrame = do
+  time <- getFloat32LE
+  frame <- getUInt32LE
+  position <- getUInt32LE
+  pure (KeyFrame { time, frame, position })
 
-getString :: Int32 -> Parser String
-getString size = do
-  buffer <- ask
-  liftReader (do
-    start <- get
-    let end = start + Offset (unpackInt32 size)
-    value <- liftState (readString buffer start end)
-    put end
-    pure value)
+getFrames :: UInt32 -> Parser (Array Frame)
+getFrames size = liftReader do
+  liftState do
+    log "TODO: getFrames"
+    inspect size
+  position <- get
+  put (position + Offset (unpackUInt32 size))
+  pure []
 
-newtype Float32 = Float32 Number
+getMessage :: Parser Message
+getMessage = todo "getMessage"
+
+getMark :: Parser Mark
+getMark = do
+  value <- getText
+  frame <- getUInt32LE
+  pure (Mark { value, frame })
+
+getClassMapping :: Parser ClassMapping
+getClassMapping = do
+  name <- getText
+  streamId <- getUInt32LE
+  pure (ClassMapping { name, streamId })
+
+getCache :: Parser Cache
+getCache = do
+  classId <- getUInt32LE
+  parentCacheId <- getUInt32LE
+  cacheId <- getUInt32LE
+  attributeMappings <- getList getAttributeMapping
+  pure (Cache { classId, parentCacheId, cacheId, attributeMappings })
+
+getAttributeMapping :: Parser AttributeMapping
+getAttributeMapping = do
+  objectId <- getUInt32LE
+  streamId <- getUInt32LE
+  pure (AttributeMapping { objectId, streamId })
+
+getDictionary :: forall a. Parser a -> Parser (Dictionary a)
+getDictionary getValue = do
+  Tuple value lastKey <- getDictionaryElements getValue
+  pure (Dictionary { value, lastKey })
+
+getDictionaryElements ::
+  forall a. Parser a -> Parser (Tuple (Array (Tuple Text a)) Text)
+getDictionaryElements getValue = do
+  Tuple key maybeValue <- getDictionaryElement getValue
+  case maybeValue of
+    Nothing -> pure (Tuple [] key)
+    Just value -> do
+      let element = Tuple key value
+      Tuple elements lastKey <- getDictionaryElements getValue
+      pure (Tuple ([element] + elements) lastKey)
+
+getDictionaryElement :: forall a. Parser a -> Parser (Tuple Text (Maybe a))
+getDictionaryElement getValue = do
+  key <- getText
+  if (unpackText key).value == "None\x00"
+    then pure (Tuple key Nothing)
+    else do
+      value <- getValue
+      pure (Tuple key (Just value))
 
 getFloat32LE :: Parser Float32
 getFloat32LE = do
@@ -308,7 +292,40 @@ getFloat32LE = do
     put (position + Offset 4)
     pure (Float32 value))
 
-newtype UInt8 = UInt8 Int
+getInt32LE :: Parser Int32
+getInt32LE = do
+  buffer <- ask
+  liftReader (do
+    position <- get
+    value <- liftState (readInt32LE buffer position)
+    put (position + Offset 4)
+    pure (Int32 value))
+
+getList :: forall a. Parser a -> Parser (List a)
+getList getElement = do
+  size <- getUInt32LE
+  value <- getListElements getElement size
+  pure (List { size, value })
+
+getListElements :: forall a. Parser a -> UInt32 -> Parser (Array a)
+getListElements getElement size = case unpackUInt32 size of
+  0 -> pure []
+  _ -> do
+    element <- getElement
+    elements <- getListElements getElement (size - UInt32 1)
+    pure ([element] + elements)
+
+getText :: Parser Text
+getText = do
+  size <- getInt32LE
+  buffer <- ask
+  value <- liftReader do
+    start <- get
+    let end = start + Offset (unpackInt32 size)
+    value <- liftState (readString buffer start end)
+    put end
+    pure value
+  pure (Text { size, value })
 
 getUInt8 :: Parser UInt8
 getUInt8 = do
@@ -319,19 +336,6 @@ getUInt8 = do
     put (position + Offset 1)
     pure (UInt8 value))
 
-newtype Int32 = Int32 Int
-
-getInt32LE :: Parser Int32
-getInt32LE = do
-  buffer <- ask
-  liftReader (do
-    position <- get
-    value <- liftState (readInt32LE buffer position)
-    put (position + Offset 4)
-    pure (Int32 value))
-
-newtype UInt32 = UInt32 Int
-
 getUInt32LE :: Parser UInt32
 getUInt32LE = do
   buffer <- ask
@@ -340,11 +344,6 @@ getUInt32LE = do
     value <- liftState (readUInt32LE buffer position)
     put (position + Offset 4)
     pure (UInt32 value))
-
-newtype UInt64 = UInt64
-  { high :: UInt32
-  , low :: UInt32
-  }
 
 getUInt64LE :: Parser UInt64
 getUInt64LE = do
