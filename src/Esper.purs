@@ -515,14 +515,6 @@ foreign import
     Offset ->
     Effect (error :: ERROR | e) { high :: Int, low :: Int }
 
--- Nullable
-
-foreign import
-  data Nullable :: Type -> Type
-
-foreign import
-  nullable :: forall a b. b -> (a -> b) -> Nullable a -> b
-
 -- Maybe
 
 data Maybe a = Nothing | Just a

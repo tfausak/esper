@@ -54,18 +54,6 @@ module.exports = {
     };
   },
 
-  nullable: function (y) {
-    return function (f) {
-      return function (x) {
-        if (x === null) {
-          return y;
-        } else {
-          return f(x);
-        }
-      };
-    };
-  },
-
   pureEffect: function (x) {
     return function () {
       return x;
