@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "purescript": "0.11.3"
+  },
+  "private": true,
+  "scripts": {
+    "purs": "purs"
+  }
+}
