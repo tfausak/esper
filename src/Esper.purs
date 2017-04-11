@@ -1,17 +1,4 @@
-module Esper
-  ( CONSOLE
-  , ERROR
-  , FILE
-  , Effect
-  , Unit
-  , main
-  ) where
-
-main ::
-  String -> Effect (console :: CONSOLE, error :: ERROR, file :: FILE) Unit
-main file = readFile file throw \buffer -> do
-  Tuple replay _offset <- runState (runReader getReplay buffer) (Offset 0)
-  inspect replay
+module Esper where
 
 -- Types
 

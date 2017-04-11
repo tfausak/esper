@@ -12,112 +12,108 @@ const bufferRead = function (type) {
   }
 };
 
-module.exports = {
+exports.addArray = function (x) {
+  return function (y) {
+    return x.concat(y);
+  };
+};
 
-  addArray: function (x) {
-    return function (y) {
-      return x.concat(y);
+exports.addInt = function (x) {
+  return function (y) {
+    return x + y;
+  };
+};
+
+exports.bindEffect = function (x) {
+  return function (f) {
+    return function () {
+      return f(x())();
     };
-  },
+  };
+};
 
-  addInt: function (x) {
-    return function (y) {
-      return x + y;
-    };
-  },
+exports.equalString = function (x) {
+  return function (y) {
+    return x === y;
+  };
+};
 
-  bindEffect: function (x) {
-    return function (f) {
+exports.inspect = function (x) {
+  return function () {
+    console.dir(x, { colors: true, depth: null });
+    return {};
+  };
+};
+
+exports.log = function (x) {
+  return function () {
+    console.log(x);
+    return {};
+  };
+};
+
+exports.newError = function (x) {
+  return new Error(x);
+};
+
+exports.pureEffect = function (x) {
+  return function () {
+    return x;
+  };
+};
+
+exports.readFile = function (x) {
+  return function (f) {
+    return function (g) {
       return function () {
-        return f(x())();
+        fs.readFile(x, function (error, buffer) {
+          if (error) {
+            f(error)();
+          } else {
+            g(buffer)();
+          }
+        });
+        return {};
       };
     };
-  },
+  };
+};
 
-  equalString: function (x) {
-    return function (y) {
-      return x === y;
-    };
-  },
+exports.readFloatLE = bufferRead('FloatLE');
 
-  inspect: function (x) {
-    return function () {
-      console.dir(x, { colors: true, depth: null });
-      return {};
-    };
-  },
+exports.readInt32LE = bufferRead('Int32LE');
 
-  log: function (x) {
-    return function () {
-      console.log(x);
-      return {};
-    };
-  },
-
-  newError: function (x) {
-    return new Error(x);
-  },
-
-  pureEffect: function (x) {
-    return function () {
-      return x;
-    };
-  },
-
-  readFile: function (x) {
-    return function (f) {
-      return function (g) {
-        return function () {
-          fs.readFile(x, function (error, buffer) {
-            if (error) {
-              f(error)();
-            } else {
-              g(buffer)();
-            }
-          });
-          return {};
-        };
+exports.readString = function (buffer) {
+  return function (start) {
+    return function (end) {
+      return function () {
+        return buffer.toString('utf8', start, end);
       };
     };
-  },
+  };
+};
 
-  readFloatLE: bufferRead('FloatLE'),
+exports.readUInt8 = bufferRead('UInt8');
 
-  readInt32LE: bufferRead('Int32LE'),
+exports.readUInt32LE = bufferRead('UInt32LE');
 
-  readString: function (buffer) {
-    return function (start) {
-      return function (end) {
-        return function () {
-          return buffer.toString('utf8', start, end);
-        };
-      };
-    };
-  },
+exports.subtractInt = function (x) {
+  return function (y) {
+    return x - y;
+  };
+};
 
-  readUInt8: bufferRead('UInt8'),
+exports.throw = function (x) {
+  return function () {
+    throw x;
+  };
+};
 
-  readUInt32LE: bufferRead('UInt32LE'),
+exports.unit = {};
 
-  subtractInt: function (x) {
-    return function (y) {
-      return x - y;
-    };
-  },
-
-  throw: function (x) {
-    return function () {
-      throw x;
-    };
-  },
-
-  unit: {},
-
-  warn: function (x) {
-    return function () {
-      console.warn(x);
-      return {};
-    };
-  },
-
+exports.warn = function (x) {
+  return function () {
+    console.warn(x);
+    return {};
+  };
 };
